@@ -46,11 +46,11 @@ go get github.com/griffia/SHT1x
 
 To build Go on the Raspberry Pi [follow these instructions](http://www.maketecheasier.com/build-go-from-source-on-raspberry-pi/)
 
-# [Documentation](http://godoc.org/github.com/griffina/SHT1x)
+### [Documentation](http://godoc.org/github.com/griffina/SHT1x)
 
 [SHT1x Datasheet](http://www.sensirion.com/fileadmin/user_upload/customers/sensirion/Dokumente/Humidity/Sensirion_Humidity_SHT7x_Datasheet_V5.pdf)
 
-## TODO:
+### TODO:
 * Calculate the CRC
 * Return errors on failures
 * Some tests
