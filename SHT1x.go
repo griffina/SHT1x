@@ -27,11 +27,11 @@
 package SHT1x
 
 import (
-	"log"
-	"time"
-
+	"errors"
+	"fmt"
 	"github.com/griffina/gpio"
 	_ "github.com/griffina/gpio/rpi"
+	"time"
 )
 
 // Sensor type called SHT1x after the Sht1x class in rpisht1x.
@@ -64,53 +64,74 @@ const (
 
 // Create a new sensor, supplying the clock and data pins,
 // returns a pointer to a sensor
-func New(P1_dataPin, P1_clockPin int) *SHT1x {
+func New(P1_dataPin, P1_clockPin int) (*SHT1x, error) {
 	//create two gpio pins
-
+	fmt.Println("version2")
 	pinData, pin1_err := gpio.OpenPin(P1_dataPin, gpio.ModeOutput)
 
 	if pin1_err != nil {
-		log.Println("error opening data pin:", P1_dataPin, pin1_err)
+		return nil, errors.New(fmt.Sprintln("error opening data pin:", P1_dataPin, pin1_err))
 	}
 
 	pinClock, pin2_err := gpio.OpenPin(P1_clockPin, gpio.ModeOutput)
 
 	if pin2_err != nil {
-		log.Println("error opening clock pin:", P1_clockPin, pin2_err)
+		return nil, errors.New(fmt.Sprintln("error opening data pin:", P1_dataPin, pin1_err))
 	}
 
-	return &SHT1x{dataPin: pinData, clockPin: pinClock}
+	return &SHT1x{dataPin: pinData, clockPin: pinClock}, nil
 }
 
 // Reads th humidity from the sensor and returns the relative humidity %
 // to do this the temperature also has to be read
-func (sht *SHT1x) ReadHumidity() float32 {
+func (sht *SHT1x) ReadHumidity() (float32, error) {
 	// not interested in the temp returned, but the
 	// temp is needed to read the relative humidity
-	_, humidity := sht.ReadTempAndHumidity()
-	return humidity
+	_, humidity, err := sht.ReadTempAndHumidity()
+	return humidity, err
 }
 
 // Read the temperature from the sensor and returns °C
 // Like rpisht1x,:
 //  "I deliberately will not implement read_temperature_F because I believe in the
 //   in the Metric System (http://en.wikipedia.org/wiki/Metric_system)"
-func (sht *SHT1x) ReadTemperature() float32 {
+func (sht *SHT1x) ReadTemperature() (float32, error) {
 
-	sht.sendCommand(tempCmd)
-	sht.waitForResult()
+	err := sht.sendCommand(tempCmd)
+	if err != nil {
+		return 0, err
+	}
+
+	err = sht.waitForResult()
+
+	if err != nil {
+		return 0, err
+	}
 	val := sht.getData16()
 	sht.skipCRC()
 	// Maths from data sheet
-	return (float32(val) * d2) + d1
+	return (float32(val) * d2) + d1, nil
 }
 
 // Read the temperature in °C and relative humidity from the sensor and returns
-func (sht *SHT1x) ReadTempAndHumidity() (temp, humidity float32) {
-	temp = sht.ReadTemperature()
+func (sht *SHT1x) ReadTempAndHumidity() (temp float32, humidity float32, err error) {
+	temp, err = sht.ReadTemperature()
 
-	sht.sendCommand(humidCmd)
-	sht.waitForResult()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	err = sht.sendCommand(humidCmd)
+
+	if err != nil {
+		return 0, 0, err
+	}
+
+	err = sht.waitForResult()
+	if err != nil {
+		return 0, 0, err
+	}
+
 	val := sht.getData16()
 
 	sht.skipCRC()
@@ -120,7 +141,8 @@ func (sht *SHT1x) ReadTempAndHumidity() (temp, humidity float32) {
 	linearHumidity := c1 + c2*floatVal + c3*floatVal*floatVal
 
 	humidity = (temp-25.0)*(t1+t2*floatVal) + linearHumidity
-	return temp, humidity
+
+	return temp, humidity, nil
 }
 
 //Reset the sensor
@@ -164,7 +186,7 @@ func (sht *SHT1x) shiftIn(numberofBits int16) uint16 {
 }
 
 // Send the a command to the sensor and process the ACK
-func (sht *SHT1x) sendCommand(command uint8) {
+func (sht *SHT1x) sendCommand(command uint8) error {
 
 	sht.dataPin.SetMode(gpio.ModeOutput)
 	sht.clockPin.SetMode(gpio.ModeOutput)
@@ -197,7 +219,7 @@ func (sht *SHT1x) sendCommand(command uint8) {
 	ack := sht.dataPin.Get()
 
 	if ack != false {
-		log.Println("Nack 1 false, in sent command")
+		return errors.New("Nack 1 false, in sent command")
 	}
 
 	sht.clockTick(false)
@@ -205,9 +227,10 @@ func (sht *SHT1x) sendCommand(command uint8) {
 	ack = sht.dataPin.Get()
 
 	if ack != true {
-		log.Println("Nack 2 true, in sent command")
+		errors.New("Nack 2 true, in sent command")
 	}
 
+	return nil
 }
 
 // if High == true set the clock line high
@@ -223,7 +246,7 @@ func (sht *SHT1x) clockTick(high bool) {
 }
 
 // wait for the data bin to become high to signal the data is ready
-func (sht *SHT1x) waitForResult() {
+func (sht *SHT1x) waitForResult() error {
 	var i int16
 	var ack bool
 	sht.dataPin.SetMode(gpio.ModeInput)
@@ -233,10 +256,10 @@ func (sht *SHT1x) waitForResult() {
 		ack = sht.dataPin.Get()
 
 		if ack == false {
-			return
+			return nil
 		}
 	}
-	log.Println("Wait exhausted")
+	return errors.New("Wait exhausted")
 }
 
 // get the data from the pins
